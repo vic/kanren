@@ -19,6 +19,11 @@ defmodule Kanren.ProperList do
   def bind(f, g) when is_function(f), do: fn -> bind(f.(), g) end
 end
 
+defmodule Kanren.Var do
+  defstruct v: 0
+  def var(v), do: %__MODULE__{v: v}
+end
+
 defmodule Kanren.Substitution do
   @moduledoc """
   An in-memory logical variable store.
@@ -29,6 +34,13 @@ defmodule Kanren.Substitution do
   defstruct binds: %{}, next_var: 0
 
   def empty, do: %S{}
+  def binding(b), do: binding(empty(), Enum.into(b, []))
+
+  defp binding(s, []), do: s
+
+  defp binding(s = %{binds: m}, [{k, u} | rest]) do
+    binding(bind(s, V.var(k), u), rest)
+  end
 
   def fetch(%S{binds: m}, v = %V{}), do: Map.get(m, v)
   def bound?(%S{binds: m}, v = %V{}), do: Map.has_key?(m, v)
@@ -42,11 +54,6 @@ defmodule Kanren.Substitution do
     s = %{s | next_var: n + 1}
     {s, v}
   end
-end
-
-defmodule Kanren.Var do
-  defstruct v: 0
-  def var(v), do: %__MODULE__{v: v}
 end
 
 defprotocol Kanren.Relation do
@@ -77,6 +84,8 @@ end
 
 defimpl Kanren.Relation, for: List do
   alias Kanren.Unify, as: U
+  def walkable?(_, _), do: false
+  def walk(_, _), do: raise("Not implemented")
   def traversable?(x, y), do: is_list(x) and is_list(y)
 
   def traverse([x | xs], [y | ys], s) do
@@ -112,7 +121,7 @@ defmodule Kanren.Unify do
       u == v -> s
       R.traversable?(u, v) -> R.traverse(u, v, s)
       R.traversable?(v, u) -> R.traverse(v, u, s)
-      :else -> false
+      :else -> nil
     end
   end
 
@@ -136,7 +145,21 @@ defmodule Kanren.Micro do
   def eq(u, v), do: U.solver(fn s -> U.unify(s, u, v) end)
 end
 
-defmodule Kanren.Constrained do
+defmodule Kanren.Operators do
+  import Kernel, only: [def: 2]
+  alias Kanren.Micro, as: M
+
+  def a == b do
+    M.eq(a, b)
+  end
+
+  def a || b do
+    M.disj(a, b)
+  end
+
+  def a && b do
+    M.conj(a, b)
+  end
 end
 
 defmodule Kanren.Mini do
@@ -153,32 +176,63 @@ defmodule Kanren do
   Documentation for Kanren.
   """
 
+  alias __MODULE__, as: K
   alias Kanren.ProperList, as: L
   alias Kanren.Substitution, as: S
   alias Kanren.Unify, as: U
   alias Kanren.Micro, as: M
   alias Kanren.Constraint, as: C
+  alias Kanren.Var, as: V
 
-  defdelegate empty(), to: S
   defdelegate eq(a, b), to: M
   defdelegate disj(a, b), to: M
   defdelegate conj(a, b), to: M
 
-  def call_fresh(f) do
+  def fresh_goal(f) do
     fn s ->
       {s, v} = S.fresh(s)
       f.(v).(s)
     end
   end
 
-  def symbolo(x) do
-    fn s ->
-      u = S.walk(s, x)
+  def goal(f), do: f
 
-      cond do
-        is_atom(u) -> L.unit(s)
-        false -> L.zero()
-      end
+  defmacro run(opts) do
+    {_, vars} = Macro.traverse(opts, [], fn
+      v = {x, _, y}, b when is_atom(x) and is_atom(y) ->
+        lv = {{:., [], [Kanren.Var, :var]}, [], [x]}
+        set = {:=, [], [v, lv]}
+        {v, [set | b]}
+      a, b -> {a, b}
+    end, fn a, b -> {a, b} end)
+
+    quote do
+      import Kernel, only: []
+      import Kanren.Operators
+      import Kanren
+      unquote(vars)
+      K.conj(unquote(opts)).(S.empty())
     end
+  end
+
+  defmacro conj(goals) do
+    quote do: many(M.conj(), unquote(goals))
+  end
+
+  defmacro disj(goals) do
+    quote do: many(M.disj(), unquote(goals))
+  end
+
+  defmacro many(binary_goal, do: block) do
+    block
+    |> case do
+      {:__block__, _, block} -> block
+      expr -> [expr]
+    end
+    |> Enum.reverse()
+    |> Enum.reduce(fn a, b ->
+      x = Macro.pipe(a, binary_goal, 0)
+      Macro.pipe(b, x, 1)
+    end)
   end
 end
