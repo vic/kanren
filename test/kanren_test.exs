@@ -44,4 +44,19 @@ defmodule KanrenTest do
     assert [_] = K.run(do: disj(1 == 2, 2 == 2))
   end
 
+  @tag :skip
+  test "walk on a -> b -> a"
+
+  @tag :skip
+  test "jealous fact" do
+    (quote do
+      fact do
+        male(:vincent)
+        male(q)
+        loves(a, b)
+        jealous(a, b) when loves(a, c) and loves(b, c)
+      end
+    end)
+  end
+
 end

@@ -29,7 +29,10 @@ end
 
 defmodule Kanren.Substitution do
   @moduledoc """
-  An in-memory logical variable store.
+  A Substitution is Kanren's state.
+
+  A substitution acts as a store for relationships
+  between values on the system.
   """
 
   alias __MODULE__, as: S
@@ -54,8 +57,8 @@ end
 defprotocol Kanren.Relation do
   @fallback_to_any true
   def bidirectional?(x, y)
-  def bindable?(x, y)
-  def bind(x, y, s)
+  def unifiable?(x, y)
+  def unify(x, y, s)
   def walkable?(x, s)
   def walk(x, s)
 end
@@ -64,8 +67,8 @@ defimpl Kanren.Relation, for: Any do
   def bidirectional?(_, _), do: false
   def walkable?(_, _), do: false
   def walk(_, _), do: raise("Not implemented")
-  def bindable?(_, _), do: false
-  def bind(_, _, _), do: raise("Not implemented")
+  def unifiable?(_, _), do: false
+  def unify(_, _, _), do: raise("Not implemented")
 end
 
 defimpl Kanren.Relation, for: Kanren.Var do
@@ -73,8 +76,8 @@ defimpl Kanren.Relation, for: Kanren.Var do
   def bidirectional?(_, _), do: true
   def walkable?(v, s), do: S.bound?(s, v)
   def walk(v, s), do: S.fetch(s, v)
-  def bindable?(v, s), do: true
-  def bind(v, u, s), do: S.bind(s, v, u)
+  def unifiable?(v, s), do: true
+  def unify(v, u, s), do: S.bind(s, v, u)
 end
 
 defimpl Kanren.Relation, for: List do
@@ -82,8 +85,8 @@ defimpl Kanren.Relation, for: List do
   def bidirectional?(_, _), do: true
   def walkable?(_, _), do: false
   def walk(_, _), do: raise("Not implemented")
-  def bindable?(x, y), do: is_list(x) and is_list(y)
-  def bind([x | xs], [y | ys], s) do
+  def unifiable?(x, y), do: is_list(y)
+  def unify([x | xs], [y | ys], s) do
     if s = U.unify(s, x, y) do
       U.unify(s, xs, ys)
     end
@@ -113,8 +116,8 @@ defmodule Kanren.Unify do
     v = walk(s, v)
     cond do
       u == v -> s
-      R.bindable?(u, v) -> R.bind(u, v, s)
-      R.bidirectional?(v, u) && R.bindable?(v, u) -> R.bind(v, u, s)
+      R.unifiable?(u, v) -> R.unify(u, v, s)
+      R.bidirectional?(v, u) && R.unifiable?(v, u) -> R.unify(v, u, s)
       :else -> nil
     end
   end
@@ -214,14 +217,20 @@ defmodule Kanren do
   end
 
   defmacro conj(goals) do
-    quote do: many(M.conj(), unquote(goals))
+    quote do: comp(M.conj(), unquote(goals))
   end
 
   defmacro disj(goals) do
-    quote do: many(M.disj(), unquote(goals))
+    quote do: comp(M.disj(), unquote(goals))
   end
 
-  defmacro many(binary_goal, do: block) do
+  defmacro fact()
+  defmacro fact(do: {:__block__, [], facts}) do
+    nil
+  end
+  defmacro fact(do: fact), do: fact
+
+  defmacro comp(binary_goal, do: block) do
     block
     |> case do
       {:__block__, _, block} -> block
