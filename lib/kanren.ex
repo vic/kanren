@@ -1,3 +1,6 @@
+# microkanren with constrains https://arxiv.org/pdf/1701.00633.pdf
+# arrows http://www.euclideanspace.com/maths/discrete/category/principles/arrow/index.htm
+
 defmodule Kanren.ProperList do
   @moduledoc """
   A monadic proper-list for kanren states.
@@ -59,6 +62,8 @@ end
 defprotocol Kanren.Relation do
   @fallback_to_any true
 
+  def bidirectional?(x, y)
+
   def traversable?(x, y)
   def traverse(x, y, s)
 
@@ -67,6 +72,7 @@ defprotocol Kanren.Relation do
 end
 
 defimpl Kanren.Relation, for: Any do
+  def bidirectional?(_, _), do: false
   def walkable?(_, _), do: false
   def walk(_, _), do: raise("Not implemented")
   def traversable?(_, _), do: false
@@ -75,7 +81,7 @@ end
 
 defimpl Kanren.Relation, for: Kanren.Var do
   alias Kanren.Substitution, as: S
-
+  def bidirectional?(_, _), do: true
   def walkable?(v, s), do: S.bound?(s, v)
   def walk(v, s), do: S.fetch(s, v)
   def traversable?(v, s), do: true
@@ -84,6 +90,7 @@ end
 
 defimpl Kanren.Relation, for: List do
   alias Kanren.Unify, as: U
+  def bidirectional?(_, _), do: true
   def walkable?(_, _), do: false
   def walk(_, _), do: raise("Not implemented")
   def traversable?(x, y), do: is_list(x) and is_list(y)
@@ -116,11 +123,10 @@ defmodule Kanren.Unify do
   def unify(s, u, v) do
     u = walk(s, u)
     v = walk(s, v)
-
     cond do
       u == v -> s
       R.traversable?(u, v) -> R.traverse(u, v, s)
-      R.traversable?(v, u) -> R.traverse(v, u, s)
+      R.bidirectional?(v, u) && R.traversable?(v, u) -> R.traverse(v, u, s)
       :else -> nil
     end
   end
@@ -197,15 +203,19 @@ defmodule Kanren do
 
   def goal(f), do: f
 
-  defmacro run(opts) do
-    {_, vars} = Macro.traverse(opts, [], fn
+  defp locals(ast) do
+    {_, vars} = Macro.traverse(ast, [], fn
       v = {x, _, y}, b when is_atom(x) and is_atom(y) ->
         lv = {{:., [], [Kanren.Var, :var]}, [], [x]}
-        set = {:=, [], [v, lv]}
-        {v, [set | b]}
+      set = {:=, [], [v, lv]}
+      {v, [set | b]}
       a, b -> {a, b}
     end, fn a, b -> {a, b} end)
+    vars
+  end
 
+  defmacro run(opts) do
+    vars = locals(opts)
     quote do
       import Kernel, only: []
       import Kanren.Operators

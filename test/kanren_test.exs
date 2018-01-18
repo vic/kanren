@@ -27,4 +27,8 @@ defmodule KanrenTest do
   test "eq can bind a variable" do
     assert [%{binds: %{%V{v: :q} => 2}}] = (K.run do q == 2 end)
   end
+
+  test "eq is bidirectional" do
+    assert [%{binds: %{%V{v: :q} => 2}}] = (K.run do 2 == q end)
+  end
 end
