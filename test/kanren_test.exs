@@ -31,4 +31,17 @@ defmodule KanrenTest do
   test "eq is bidirectional" do
     assert [%{binds: %{%V{v: :q} => 2}}] = (K.run do 2 == q end)
   end
+
+  test "conj unifies second if first also unifies" do
+    assert [_] = K.run(do: conj(1 == 1, 2 == 2))
+  end
+
+  test "conj does not unify second if first doesnt unifies" do
+    assert [] = K.run(do: conj(1 == 2, 2 == 2))
+  end
+
+  test "disj unifies second even if first does not" do
+    assert [_] = K.run(do: disj(1 == 2, 2 == 2))
+  end
+
 end
