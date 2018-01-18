@@ -1,25 +1,21 @@
 # microkanren with constrains https://arxiv.org/pdf/1701.00633.pdf
 # arrows http://www.euclideanspace.com/maths/discrete/category/principles/arrow/index.htm
 
-defmodule Kanren.ProperList do
-  @moduledoc """
-  A monadic proper-list for kanren states.
-
-  This m-list's `plus` and `bind` operations
-  support head-thunks as a way to
-  trampoline computation between branches.
-  """
-
+defmodule Kanren.Flow do
   def zero, do: []
-  def unit(x), do: [x | zero()]
+  def unit(x), do: [x]
 
-  def plus([], ys), do: ys
-  def plus([x | xs], ys), do: [x | plus(xs, ys)]
-  def plus(f, ys) when is_function(f), do: fn -> plus(ys, f.()) end
+  def conj(f, g) do
+    fn s ->
+      f.(s) |> Flow.from_enumerable |> Flow.flat_map(fn s -> g.(s) end)
+    end
+  end
 
-  def bind([], _g), do: zero()
-  def bind([x | xs], g), do: plus(g.(x), bind(xs, g))
-  def bind(f, g) when is_function(f), do: fn -> bind(f.(), g) end
+  def disj(f, g) do
+    fn s ->
+      [f, g] |> Flow.from_enumerable |> Flow.flat_map(fn x -> x.(s) end)
+    end
+  end
 end
 
 defmodule Kanren.Var do
@@ -94,12 +90,8 @@ defimpl Kanren.Relation, for: List do
   end
 end
 
-defmodule Kanren.Constraint do
-  defstruct [:name, :predicate]
-end
-
 defmodule Kanren.Unify do
-  alias Kanren.ProperList, as: L
+  alias Kanren.Flow, as: F
   alias Kanren.Substitution, as: S
   alias Kanren.Relation, as: R
 
@@ -127,20 +119,21 @@ defmodule Kanren.Unify do
   def solver(f) do
     fn s ->
       if s = f.(s) do
-        L.unit(s)
+        F.unit(s)
       else
-        L.zero()
+        F.zero
       end
     end
   end
 end
 
 defmodule Kanren.Micro do
-  alias Kanren.ProperList, as: L
   alias Kanren.Unify, as: U
 
-  def disj(a, b), do: fn s -> L.plus(a.(s), b.(s)) end
-  def conj(a, b), do: fn s -> L.bind(a.(s), b) end
+  @join_opts [join: Kanren.Flow]
+  def conj(a, b, opts \\ @join_opts), do: opts[:join].conj(a, b)
+  def disj(a, b, opts \\ @join_opts), do: opts[:join].disj(a, b)
+
   def eq(u, v), do: U.solver(fn s -> U.unify(s, u, v) end)
 end
 
@@ -176,7 +169,6 @@ defmodule Kanren do
   """
 
   alias __MODULE__, as: K
-  alias Kanren.ProperList, as: L
   alias Kanren.Substitution, as: S
   alias Kanren.Unify, as: U
   alias Kanren.Micro, as: M
@@ -217,14 +209,23 @@ defmodule Kanren do
   end
 
   defmacro run(opts) do
-    vars = locals(opts)
+    code = Keyword.get(opts, :do)
+    vars = locals(code)
+
+    take = case Keyword.get(opts, :take, :all) do
+             :all -> quote(do: Enum.to_list)
+             x when is_integer(x) -> quote(do: Enum.take(unquote(x)))
+             _ -> quote(do: (fn x -> x end).())
+           end
 
     quote do
       import Kernel, only: []
       import Kanren.Operators
       import Kanren
+
       unquote(vars)
-      K.conj(unquote(opts)).(S.empty())
+
+      K.conj(do: unquote(code)).(S.empty()) |> unquote(take)
     end
   end
 
@@ -257,7 +258,21 @@ defmodule Kanren do
     end)
   end
 
-  def fives(x) do
-    disj(eq(x, 5), eq(x, 6))
+  defmacro lazy(g) do
+    quote do
+      fn s ->
+        # fn {:cont, xs}, _ ->
+          # IO.inspect(s)
+          # Flow.from_enumerables(xs, unquote(g).(s))
+          # {:halt, Flow.from_enumerables([xs, unquote(g).(s)])}
+        # {:cont, Flow.from_enumerable(xs) }
+        #end
+      end
+    end
   end
+
+  def fives(q) do
+    disj(eq(5, q), lazy(fives(q)))
+  end
+
 end

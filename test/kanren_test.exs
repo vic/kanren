@@ -5,6 +5,7 @@ defmodule KanrenTest do
   doctest Kanren
 
   alias Kanren, as: K
+  alias Kanren.Micro, as: M
   alias Kanren.Substitution, as: S
   alias Kanren.Unify, as: U
   alias Kanren.Var, as: V
@@ -120,6 +121,10 @@ defmodule KanrenTest do
              %{binds: %{%V{v: :q} => 5}},
              %{binds: %{%V{v: :q} => 6}}
            ] = K.run(do: q == 5 || q == 6)
+  end
+
+  test "recursive goal unifies to lazy stream" do
+    assert nil = K.run(take: 2, do: fives(q))
   end
 
   @tag :skip
