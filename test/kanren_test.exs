@@ -9,32 +9,57 @@ defmodule KanrenTest do
   alias Kanren.Unify, as: U
   alias Kanren.Var, as: V
 
-  describe "unify" do
+  test "a fresh variable unifies to any value" do
+    s =
+      S.empty()
+      |> U.unify(V.var(:q), 22)
+      |> S.fetch(V.var(:q))
+    assert s == 22
+  end
 
-    test "a fresh variable unifies to any value" do
-      s =
-        S.empty()
-        |> U.unify(V.var(:q), 22)
-        |> S.fetch(V.var(:q))
-      assert s == 22
-    end
+  test "a non-fresh variable unifies only to its bound value" do
+    s =
+      S.empty()
+      |> S.bind(V.var(:q), 99)
+      |> U.unify(V.var(:q), 22)
+    assert s == nil
+  end
 
-    test "a non-fresh variable unifies only to its bound value" do
-      s =
-        S.empty()
-        |> S.bind(V.var(:q), 99)
-        |> U.unify(V.var(:q), 22)
-      assert s == nil
-    end
+  test "two list bind each zipped item" do
+    s =
+      S.empty()
+      |> U.unify([1, 2, 3], [1, V.var(:q), 3])
+      |> S.fetch(V.var(:q))
+    assert s == 2
+  end
 
-    test "two list bind each zipped item" do
-      s =
-        S.empty()
-        |> U.unify([1, 2, 3], [1, V.var(:q), 3])
-        |> S.fetch(V.var(:q))
-      assert s == 2
-    end
+  test "two list with non-unifable items does not unify" do
+    s = S.empty() |> U.unify([1, 2, 3], [1, 3, 2])
+    assert s == nil
+  end
 
+  test "vars are followed to its value" do
+    s =
+      S.empty()
+      |> S.bind(V.var(:a), V.var(:b))
+      |> S.bind(V.var(:b), 99)
+      |> U.unify(V.var(:a), V.var(:c))
+      |> S.fetch(V.var(:c))
+    assert s == 99
+  end
+
+  test "var unification is bidirectonal" do
+    s =
+      S.empty()
+      |> U.unify(V.var(:a), 22)
+      |> S.fetch(V.var(:a))
+    assert s == 22
+
+    s =
+      S.empty()
+      |> U.unify(33, V.var(:a))
+      |> S.fetch(V.var(:a))
+    assert s == 33
   end
 
   test "goal can return an empty list" do
