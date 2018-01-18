@@ -37,13 +37,6 @@ defmodule Kanren.Substitution do
   defstruct binds: %{}, next_var: 0
 
   def empty, do: %S{}
-  def binding(b), do: binding(empty(), Enum.into(b, []))
-
-  defp binding(s, []), do: s
-
-  defp binding(s = %{binds: m}, [{k, u} | rest]) do
-    binding(bind(s, V.var(k), u), rest)
-  end
 
   def fetch(%S{binds: m}, v = %V{}), do: Map.get(m, v)
   def bound?(%S{binds: m}, v = %V{}), do: Map.has_key?(m, v)
@@ -61,12 +54,9 @@ end
 
 defprotocol Kanren.Relation do
   @fallback_to_any true
-
   def bidirectional?(x, y)
-
-  def traversable?(x, y)
-  def traverse(x, y, s)
-
+  def bindable?(x, y)
+  def bind(x, y, s)
   def walkable?(x, s)
   def walk(x, s)
 end
@@ -75,8 +65,8 @@ defimpl Kanren.Relation, for: Any do
   def bidirectional?(_, _), do: false
   def walkable?(_, _), do: false
   def walk(_, _), do: raise("Not implemented")
-  def traversable?(_, _), do: false
-  def traverse(_, _, _), do: raise("Not implemented")
+  def bindable?(_, _), do: false
+  def bind(_, _, _), do: raise("Not implemented")
 end
 
 defimpl Kanren.Relation, for: Kanren.Var do
@@ -84,8 +74,8 @@ defimpl Kanren.Relation, for: Kanren.Var do
   def bidirectional?(_, _), do: true
   def walkable?(v, s), do: S.bound?(s, v)
   def walk(v, s), do: S.fetch(s, v)
-  def traversable?(v, s), do: true
-  def traverse(v, u, s), do: S.bind(s, v, u)
+  def bindable?(v, s), do: true
+  def bind(v, u, s), do: S.bind(s, v, u)
 end
 
 defimpl Kanren.Relation, for: List do
@@ -93,9 +83,8 @@ defimpl Kanren.Relation, for: List do
   def bidirectional?(_, _), do: true
   def walkable?(_, _), do: false
   def walk(_, _), do: raise("Not implemented")
-  def traversable?(x, y), do: is_list(x) and is_list(y)
-
-  def traverse([x | xs], [y | ys], s) do
+  def bindable?(x, y), do: is_list(x) and is_list(y)
+  def bind([x | xs], [y | ys], s) do
     if s = U.unify(s, x, y) do
       U.unify(s, xs, ys)
     end
@@ -125,8 +114,8 @@ defmodule Kanren.Unify do
     v = walk(s, v)
     cond do
       u == v -> s
-      R.traversable?(u, v) -> R.traverse(u, v, s)
-      R.bidirectional?(v, u) && R.traversable?(v, u) -> R.traverse(v, u, s)
+      R.bindable?(u, v) -> R.bind(u, v, s)
+      R.bidirectional?(v, u) && R.bindable?(v, u) -> R.bind(v, u, s)
       :else -> nil
     end
   end
