@@ -110,9 +110,8 @@ defmodule KanrenTest do
   test "jealous fact" do
     (quote do
       fact do
-        male(:vincent)
-        male(q)
-        loves(a, b)
+        loves(:marcellus, :mia)
+        loves(:vincent, :mia)
         jealous(a, b) when loves(a, c) and loves(b, c)
       end
     end)
