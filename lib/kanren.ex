@@ -185,7 +185,7 @@ defmodule Kanren do
   defdelegate disj(a, b), to: M
   defdelegate conj(a, b), to: M
 
-  def fresh_goal(f) do
+  def fresh_var(f) do
     fn s ->
       {s, v} = S.fresh(s, &V.var/1)
       f.(v).(s)

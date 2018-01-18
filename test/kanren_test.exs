@@ -6,7 +6,36 @@ defmodule KanrenTest do
 
   alias Kanren, as: K
   alias Kanren.Substitution, as: S
+  alias Kanren.Unify, as: U
   alias Kanren.Var, as: V
+
+  describe "unify" do
+
+    test "a fresh variable unifies to any value" do
+      s =
+        S.empty()
+        |> U.unify(V.var(:q), 22)
+        |> S.fetch(V.var(:q))
+      assert s == 22
+    end
+
+    test "a non-fresh variable unifies only to its bound value" do
+      s =
+        S.empty()
+        |> S.bind(V.var(:q), 99)
+        |> U.unify(V.var(:q), 22)
+      assert s == nil
+    end
+
+    test "two list bind each zipped item" do
+      s =
+        S.empty()
+        |> U.unify([1, 2, 3], [1, V.var(:q), 3])
+        |> S.fetch(V.var(:q))
+      assert s == 2
+    end
+
+  end
 
   test "goal can return an empty list" do
     assert [] = K.run(do: goal(fn s -> [] end))
