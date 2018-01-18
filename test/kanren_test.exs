@@ -14,6 +14,7 @@ defmodule KanrenTest do
       S.empty()
       |> U.unify(V.var(:q), 22)
       |> S.fetch(V.var(:q))
+
     assert s == 22
   end
 
@@ -22,6 +23,7 @@ defmodule KanrenTest do
       S.empty()
       |> S.bind(V.var(:q), 99)
       |> U.unify(V.var(:q), 22)
+
     assert s == nil
   end
 
@@ -30,6 +32,7 @@ defmodule KanrenTest do
       S.empty()
       |> U.unify([1, 2, 3], [1, V.var(:q), 3])
       |> S.fetch(V.var(:q))
+
     assert s == 2
   end
 
@@ -50,6 +53,7 @@ defmodule KanrenTest do
       |> S.bind(V.var(:b), 99)
       |> U.unify(V.var(:a), V.var(:c))
       |> S.fetch(V.var(:c))
+
     assert s == 99
   end
 
@@ -58,12 +62,14 @@ defmodule KanrenTest do
       S.empty()
       |> U.unify(V.var(:a), 22)
       |> S.fetch(V.var(:a))
+
     assert s == 22
 
     s =
       S.empty()
       |> U.unify(33, V.var(:a))
       |> S.fetch(V.var(:a))
+
     assert s == 33
   end
 
@@ -84,11 +90,17 @@ defmodule KanrenTest do
   end
 
   test "eq can bind a variable" do
-    assert [%{binds: %{%V{v: :q} => 2}}] = (K.run do q == 2 end)
+    assert [%{binds: %{%V{v: :q} => 2}}] =
+             (K.run do
+                q == 2
+              end)
   end
 
   test "eq is bidirectional" do
-    assert [%{binds: %{%V{v: :q} => 2}}] = (K.run do 2 == q end)
+    assert [%{binds: %{%V{v: :q} => 2}}] =
+             (K.run do
+                2 == q
+              end)
   end
 
   test "conj unifies second if first also unifies" do
@@ -103,18 +115,24 @@ defmodule KanrenTest do
     assert [_] = K.run(do: disj(1 == 2, 2 == 2))
   end
 
+  test "disj unifies to every branch" do
+    assert [
+             %{binds: %{%V{v: :q} => 5}},
+             %{binds: %{%V{v: :q} => 6}}
+           ] = K.run(do: q == 5 || q == 6)
+  end
+
   @tag :skip
   test "walk on a -> b -> a"
 
   @tag :skip
   test "jealous fact" do
-    (quote do
+    quote do
       fact do
         loves(:marcellus, :mia)
         loves(:vincent, :mia)
         jealous(a, b) when loves(a, c) and loves(b, c)
       end
-    end)
+    end
   end
-
 end

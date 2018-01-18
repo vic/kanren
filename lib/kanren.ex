@@ -86,6 +86,7 @@ defimpl Kanren.Relation, for: List do
   def walkable?(_, _), do: false
   def walk(_, _), do: raise("Not implemented")
   def unifiable?(x, y), do: is_list(y) and length(x) == length(y)
+
   def unify([x | xs], [y | ys], s) do
     if s = U.unify(s, x, y) do
       U.unify(s, xs, ys)
@@ -114,6 +115,7 @@ defmodule Kanren.Unify do
   def unify(s, u, v) do
     u = walk(s, u)
     v = walk(s, v)
+
     cond do
       u == v -> s
       R.unifiable?(u, v) -> R.unify(u, v, s)
@@ -195,18 +197,28 @@ defmodule Kanren do
   def goal(f), do: f
 
   defp locals(ast) do
-    {_, vars} = Macro.traverse(ast, [], fn
-      v = {x, _, y}, b when is_atom(x) and is_atom(y) ->
-        lv = {{:., [], [Kanren.Var, :var]}, [], [x]}
-      set = {:=, [], [v, lv]}
-      {v, [set | b]}
-      a, b -> {a, b}
-    end, fn a, b -> {a, b} end)
+    {_, vars} =
+      Macro.traverse(
+        ast,
+        [],
+        fn
+          v = {x, _, y}, b when is_atom(x) and is_atom(y) ->
+            lv = {{:., [], [Kanren.Var, :var]}, [], [x]}
+            set = {:=, [], [v, lv]}
+            {v, [set | b]}
+
+          a, b ->
+            {a, b}
+        end,
+        fn a, b -> {a, b} end
+      )
+
     vars
   end
 
   defmacro run(opts) do
     vars = locals(opts)
+
     quote do
       import Kernel, only: []
       import Kanren.Operators
@@ -225,9 +237,11 @@ defmodule Kanren do
   end
 
   defmacro fact()
+
   defmacro fact(do: {:__block__, [], facts}) do
     nil
   end
+
   defmacro fact(do: fact), do: fact
 
   defmacro comp(binary_goal, do: block) do
@@ -241,5 +255,9 @@ defmodule Kanren do
       x = Macro.pipe(a, binary_goal, 0)
       Macro.pipe(b, x, 1)
     end)
+  end
+
+  def fives(x) do
+    disj(eq(x, 5), eq(x, 6))
   end
 end
