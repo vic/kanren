@@ -85,7 +85,7 @@ defimpl Kanren.Relation, for: List do
   def bidirectional?(_, _), do: true
   def walkable?(_, _), do: false
   def walk(_, _), do: raise("Not implemented")
-  def unifiable?(x, y), do: is_list(y)
+  def unifiable?(x, y), do: is_list(y) and length(x) == length(y)
   def unify([x | xs], [y | ys], s) do
     if s = U.unify(s, x, y) do
       U.unify(s, xs, ys)

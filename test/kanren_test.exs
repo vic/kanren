@@ -33,8 +33,13 @@ defmodule KanrenTest do
     assert s == 2
   end
 
-  test "two list with non-unifable items does not unify" do
+  test "two list with non-unifiable items do not unify" do
     s = S.empty() |> U.unify([1, 2, 3], [1, 3, 2])
+    assert s == nil
+  end
+
+  test "two list of differing length do not unify" do
+    s = S.empty() |> U.unify([1, 2], [1, 2, 3])
     assert s == nil
   end
 
