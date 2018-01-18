@@ -13,11 +13,11 @@ defmodule KanrenTest do
   end
 
   test "goal can return a non-empty list" do
-    assert [%S{binds: %{}}] = K.run(do: goal(fn s -> [s] end))
+    assert [_] = K.run(do: goal(fn s -> [s] end))
   end
 
   test "eq unifies on two equal numbers" do
-    assert [%S{binds: %{}}] = K.run(do: 9 == 9)
+    assert [_] = K.run(do: 9 == 9)
   end
 
   test "eq does not unify on two different numbers" do

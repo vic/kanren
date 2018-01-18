@@ -32,22 +32,21 @@ defmodule Kanren.Substitution do
   An in-memory logical variable store.
   """
 
-  alias Kanren.Var, as: V
   alias __MODULE__, as: S
-  defstruct binds: %{}, next_var: 0
+  defstruct binds: %{}, next: 0
 
   def empty, do: %S{}
 
-  def fetch(%S{binds: m}, v = %V{}), do: Map.get(m, v)
-  def bound?(%S{binds: m}, v = %V{}), do: Map.has_key?(m, v)
+  def fetch(%S{binds: m}, v), do: Map.get(m, v)
+  def bound?(%S{binds: m}, v), do: Map.has_key?(m, v)
 
-  def bind(s = %S{binds: m}, v = %V{}, u) do
+  def bind(s = %S{binds: m}, v, u) do
     %{s | binds: Map.put(m, v, u)}
   end
 
-  def fresh(s = %S{next_var: n}) do
-    v = V.var(n)
-    s = %{s | next_var: n + 1}
+  def fresh(s = %S{next: n}, f) do
+    v = f.(n)
+    s = %{s | next: n + 1}
     {s, v}
   end
 end
@@ -185,7 +184,7 @@ defmodule Kanren do
 
   def fresh_goal(f) do
     fn s ->
-      {s, v} = S.fresh(s)
+      {s, v} = S.fresh(s, &V.var/1)
       f.(v).(s)
     end
   end
