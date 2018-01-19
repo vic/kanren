@@ -1,17 +1,73 @@
+# implementing microkanren https://www.youtube.com/watch?v=0FwIwewHC3o
 # microkanren with constrains https://arxiv.org/pdf/1701.00633.pdf
-# arrows http://www.euclideanspace.com/maths/discrete/category/principles/arrow/index.htm
+
+defmodule Kanren.List do
+  def zero, do: []
+  def unit(x), do: [x | zero()]
+
+  def plus([], ys), do: ys
+  def plus([x | xs], ys), do: [x | plus(xs, ys)]
+  def plus(fxs, ys) when is_function(fxs), do: fn -> plus(ys, fxs.()) end
+
+  def bind([], _f), do: zero()
+  def bind([x | xs], f), do: plus(f.(x), bind(xs, f))
+  def bind(l, f) when is_function(l), do: fn -> bind(l.(), f) end
+
+  def lazy(g, _), do: fn s -> fn -> g.(s) end end
+  def disj(ga, gb, _), do: fn s -> plus(ga.(s), gb.(s)) end
+  def conj(g, f, _), do: fn s -> bind(g.(s), f)end
+end
+
+defmodule Kanren.Stream do
+  def zero, do: Stream.concat([])
+  def unit(x), do: Stream.concat([[x]])
+
+  def plus(x, y), do: Stream.concat([x, y])
+  def bind(x, f), do: Stream.map(x, f)
+
+  def lazy(g, _) do
+    fn s ->
+      init = fn -> nil end
+      done = fn _ -> nil end
+      producer = fn _ -> {g.(s), nil} end
+      Stream.resource(init, producer, done)
+      |> Stream.flat_map(&(&1))
+    end
+  end
+
+  def disj(ga, gb, _) do
+    fn s ->
+      init = fn -> :a end
+      producer = fn
+        :a -> {ga.(s), :b}
+        :b -> {gb.(s), :c}
+        :c -> {:halt, nil}
+      end
+      done = fn _ -> nil end
+      Stream.resource(init, producer, done)
+      |> Stream.flat_map(&(&1))
+    end
+  end
+
+  def conj(g, f, _) do
+    fn s -> g.(s) |> Stream.flat_map(f) end
+  end
+
+end
 
 defmodule Kanren.Flow do
-  def zero, do: []
-  def unit(x), do: [x]
+  def lazy(g, _) do
+    fn s ->
+    end
+  end
 
-  def conj(f, g) do
+  def conj(f, g, _) do
     fn s ->
       f.(s) |> Flow.from_enumerable |> Flow.flat_map(fn s -> g.(s) end)
     end
   end
 
-  def disj(f, g) do
+  def disj(f, g, _) do
     fn s ->
       [f, g] |> Flow.from_enumerable |> Flow.flat_map(fn x -> x.(s) end)
     end
@@ -24,13 +80,6 @@ defmodule Kanren.Var do
 end
 
 defmodule Kanren.Substitution do
-  @moduledoc """
-  A Substitution is Kanren's state.
-
-  A substitution acts as a store for relationships
-  between values on the system.
-  """
-
   alias __MODULE__, as: S
   defstruct binds: %{}, next: 0
 
@@ -53,36 +102,39 @@ end
 defprotocol Kanren.Relation do
   @fallback_to_any true
   def bidirectional?(x, y)
-  def unifiable?(x, y)
+  def unifiable?(x, y, s)
   def unify(x, y, s)
-  def walkable?(x, s)
-  def walk(x, s)
+  def reference?(x, s)
+  def dereference(x, s)
 end
 
 defimpl Kanren.Relation, for: Any do
   def bidirectional?(_, _), do: false
-  def walkable?(_, _), do: false
-  def walk(_, _), do: raise("Not implemented")
-  def unifiable?(_, _), do: false
+  def reference?(_, _), do: false
+  def dereference(_, _), do: raise("Not implemented")
+  def unifiable?(_, _, _), do: false
   def unify(_, _, _), do: raise("Not implemented")
 end
 
 defimpl Kanren.Relation, for: Kanren.Var do
   alias Kanren.Substitution, as: S
   def bidirectional?(_, _), do: true
-  def walkable?(v, s), do: S.bound?(s, v)
-  def walk(v, s), do: S.fetch(s, v)
-  def unifiable?(v, s), do: true
+  def reference?(v, s), do: S.bound?(s, v)
+  def dereference(v, s), do: S.fetch(s, v)
+  def unifiable?(v, _, s), do: !reference?(v, s)
   def unify(v, u, s), do: S.bind(s, v, u)
 end
 
 defimpl Kanren.Relation, for: List do
   alias Kanren.Unify, as: U
   def bidirectional?(_, _), do: true
-  def walkable?(_, _), do: false
-  def walk(_, _), do: raise("Not implemented")
-  def unifiable?(x, y), do: is_list(y) and length(x) == length(y)
+  def reference?(_, _), do: false
+  def dereference(_, _), do: raise("Not implemented")
+  def unifiable?(_, y, _), do: is_list(y)
 
+  def unify([], [], s), do: s
+  def unify([_ | _], [], _), do: nil
+  def unify([], [_ | _], _), do: nil
   def unify([x | xs], [y | ys], s) do
     if s = U.unify(s, x, y) do
       U.unify(s, xs, ys)
@@ -91,37 +143,37 @@ defimpl Kanren.Relation, for: List do
 end
 
 defmodule Kanren.Unify do
-  alias Kanren.Flow, as: F
+  alias Kanren.List, as: L
   alias Kanren.Substitution, as: S
   alias Kanren.Relation, as: R
 
-  def walk(s, u) do
-    if R.walkable?(u, s) do
-      u = R.walk(u, s)
-      walk(s, u)
+  def dereference(s, u) do
+    if R.reference?(u, s) do
+      u = R.dereference(u, s)
+      dereference(s, u)
     else
       u
     end
   end
 
   def unify(s, u, v) do
-    u = walk(s, u)
-    v = walk(s, v)
+    u = dereference(s, u)
+    v = dereference(s, v)
 
     cond do
       u == v -> s
-      R.unifiable?(u, v) -> R.unify(u, v, s)
-      R.bidirectional?(v, u) && R.unifiable?(v, u) -> R.unify(v, u, s)
+      R.unifiable?(u, v, s) -> R.unify(u, v, s)
+      R.bidirectional?(v, u) && R.unifiable?(v, u, s) -> R.unify(v, u, s)
       :else -> nil
     end
   end
 
-  def solver(f) do
+  def goal(u) do
     fn s ->
-      if s = f.(s) do
-        F.unit(s)
+      if s = u.(s) do
+        L.unit(s)
       else
-        F.zero
+        L.zero
       end
     end
   end
@@ -129,12 +181,14 @@ end
 
 defmodule Kanren.Micro do
   alias Kanren.Unify, as: U
+  alias Kanren.List, as: L
+  alias Kanren.Flow, as: F
 
-  @join_opts [join: Kanren.Flow]
-  def conj(a, b, opts \\ @join_opts), do: opts[:join].conj(a, b)
-  def disj(a, b, opts \\ @join_opts), do: opts[:join].disj(a, b)
+  def lazy(g, s, opts \\ [module: L]), do: opts[:module].lazy(g, s, opts)
+  def conj(a, b, opts \\ [module: L]), do: opts[:module].conj(a, b, opts)
+  def disj(a, b, opts \\ [module: L]), do: opts[:module].disj(a, b, opts)
 
-  def eq(u, v), do: U.solver(fn s -> U.unify(s, u, v) end)
+  def eq(u, v), do: U.goal(&U.unify(&1, u, v))
 end
 
 defmodule Kanren.Operators do
@@ -212,12 +266,6 @@ defmodule Kanren do
     code = Keyword.get(opts, :do)
     vars = locals(code)
 
-    take = case Keyword.get(opts, :take, :all) do
-             :all -> quote(do: Enum.to_list)
-             x when is_integer(x) -> quote(do: Enum.take(unquote(x)))
-             _ -> quote(do: (fn x -> x end).())
-           end
-
     quote do
       import Kernel, only: []
       import Kanren.Operators
@@ -225,7 +273,7 @@ defmodule Kanren do
 
       unquote(vars)
 
-      K.conj(do: unquote(code)).(S.empty()) |> unquote(take)
+      K.conj(do: unquote(code)).(S.empty())
     end
   end
 
@@ -258,21 +306,13 @@ defmodule Kanren do
     end)
   end
 
-  defmacro lazy(g) do
+  defmacro lazy(g, opts \\ [module: Kanren.Stream]) do
     quote do
       fn s ->
-        # fn {:cont, xs}, _ ->
-          # IO.inspect(s)
-          # Flow.from_enumerables(xs, unquote(g).(s))
-          # {:halt, Flow.from_enumerables([xs, unquote(g).(s)])}
-        # {:cont, Flow.from_enumerable(xs) }
-        #end
+        opts = unquote(opts)
+        opts[:module].lazy(unquote(g), opts).(s)
       end
     end
-  end
-
-  def fives(q) do
-    disj(eq(5, q), lazy(fives(q)))
   end
 
 end

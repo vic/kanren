@@ -5,6 +5,7 @@ defmodule KanrenTest do
   doctest Kanren
 
   alias Kanren, as: K
+  alias Kanren.List, as: L
   alias Kanren.Micro, as: M
   alias Kanren.Substitution, as: S
   alias Kanren.Unify, as: U
@@ -123,8 +124,22 @@ defmodule KanrenTest do
            ] = K.run(do: q == 5 || q == 6)
   end
 
+  alias Kanren.Stream, as: St
+  alias Kanren.Flow, as: Sf
+
+  def fives(q) do
+    St.disj(K.eq(5, q), K.lazy(fives(q), module: St), [])
+  end
+
+  test "foo" do
+    q = V.var(:q)
+    r = fives(q).(S.empty())
+    IO.inspect(r |> Enum.take(3))
+  end
+
+  @tag :skip
   test "recursive goal unifies to lazy stream" do
-    assert nil = K.run(take: 2, do: fives(q))
+    assert nil = K.run(do: fives(q)) |> Enum.take(2)
   end
 
   @tag :skip
